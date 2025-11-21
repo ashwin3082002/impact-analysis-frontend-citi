@@ -25,3 +25,38 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+
+## 🧩 High-Level Architecture
+```pgsql
+           +--------------------------------------+
+           |  (REACT UI)   Functional Requirement |
+           +-------------+------------------------+
+                         |
+                         v
+              +----------+----------+
+              |     AI Reasoning    |
+              |   (GLM-4.6 + Ollama)|
+              +----------+----------+
+                         |
+                         v
+              +----------+----------+
+              |   PyCodeCompass     |
+              |   Microservice      |
+              +----------+----------+
+                         |
+       +-----------------+----------------+
+       |                 |                |
+       v                 v                v
++------+-----+   +-------+------+  +------+-------+
+| CodeQL DB  |   |  DTO Scanner |  | Impact Graph |
+| Generation |   | (Java Source)|  |  (NetworkX)  |
++------+-----+   +-------+------+  +------+-------+
+       |                 |                |
+       +-----------------+----------------+
+                         |
+                         v
+               +---------+---------+
+               |   Neo4j Storage   |
+               |  Versioned Graphs |
+               +-------------------+
+```
