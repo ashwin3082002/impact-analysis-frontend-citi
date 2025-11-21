@@ -1,0 +1,1550 @@
+openapi: 3.0.3
+info:
+  title: Code Impact Analyzer API
+  description: |
+    REST API for the Code Impact Analyzer application. This API enables repository management, 
+    functional requirement collaboration, and impact analysis visualization across three user roles: 
+    Admin, Developer, and Business Analyst (BA).
+    
+    ## Authentication
+    All endpoints except `/auth/login` require authentication via Bearer token.
+    
+    ## User Roles & Permissions
+    - **Admin**: Full access to user management, repositories, and all features
+    - **Developer**: Can manage repositories, view and comment on FRs
+    - **BA**: Can create/manage FRs, trigger impact analysis, and collaborate with developers
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@codeimpactanalyzer.com
+
+servers:
+  - url: https://api.codeimpactanalyzer.com/v1
+    description: Production server
+  - url: https://staging-api.codeimpactanalyzer.com/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication operations
+  - name: Users
+    description: User management (Admin only)
+  - name: Repositories
+    description: Code repository management
+  - name: Functional Requirements
+    description: Functional requirement collaboration
+  - name: Comments
+    description: FR discussion and comments
+  - name: Impact Analysis
+    description: Code impact analysis operations
+  - name: Dependencies
+    description: Repository dependency graph
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ============================================
+  # Authentication Endpoints
+  # ============================================
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: dev@example.com
+                password:
+                  type: string
+                  format: password
+                  example: dev123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                    description: JWT authentication token
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  expiresIn:
+                    type: integer
+                    description: Token expiration time in seconds
+                    example: 86400
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate current authentication token
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Retrieve the authenticated user's profile
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh authentication token
+      description: Get a new token using the current valid token
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  expiresIn:
+                    type: integer
+                    example: 86400
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ============================================
+  # User Management Endpoints (Admin only)
+  # ============================================
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List all users
+      description: Retrieve a list of all users (Admin only)
+      parameters:
+        - name: role
+          in: query
+          description: Filter users by role
+          schema:
+            $ref: '#/components/schemas/UserRole'
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags:
+        - Users
+      summary: Create new user
+      description: Create a new user account (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          description: User with this email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Retrieve a specific user's details (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Update an existing user (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      description: Delete a user account (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: User deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ============================================
+  # Repository Endpoints
+  # ============================================
+  /repositories:
+    get:
+      tags:
+        - Repositories
+      summary: List all repositories
+      description: Retrieve a list of repositories (accessible by Developer and Admin)
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          description: Search repositories by name or description
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Repository'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Repositories
+      summary: Create new repository
+      description: Create a new repository (Developer and Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepositoryCreate'
+      responses:
+        '201':
+          description: Repository created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /repositories/{id}:
+    get:
+      tags:
+        - Repositories
+      summary: Get repository by ID
+      description: Retrieve detailed information about a specific repository
+      parameters:
+        - $ref: '#/components/parameters/RepositoryId'
+      responses:
+        '200':
+          description: Repository details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Repositories
+      summary: Update repository
+      description: Update an existing repository (Developer and Admin only)
+      parameters:
+        - $ref: '#/components/parameters/RepositoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepositoryUpdate'
+      responses:
+        '200':
+          description: Repository updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Repositories
+      summary: Delete repository
+      description: Delete a repository (Developer and Admin only)
+      parameters:
+        - $ref: '#/components/parameters/RepositoryId'
+      responses:
+        '204':
+          description: Repository deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /repositories/{id}/dependencies:
+    get:
+      tags:
+        - Dependencies
+      summary: Get repository dependencies
+      description: Retrieve the dependency graph for a specific repository
+      parameters:
+        - $ref: '#/components/parameters/RepositoryId'
+        - name: includeVulnerable
+          in: query
+          description: Filter to show only vulnerable dependencies
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Repository dependency graph
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repositoryId:
+                    type: string
+                    example: repo-1
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DependencyNode'
+                  summary:
+                    type: object
+                    properties:
+                      totalModules:
+                        type: integer
+                        example: 45
+                      vulnerableModules:
+                        type: integer
+                        example: 3
+                      totalAPIs:
+                        type: integer
+                        example: 127
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /repositories/{id}/functional-requirements:
+    get:
+      tags:
+        - Repositories
+        - Functional Requirements
+      summary: Get repository FRs
+      description: Retrieve all functional requirements for a specific repository
+      parameters:
+        - $ref: '#/components/parameters/RepositoryId'
+        - name: status
+          in: query
+          description: Filter by FR status
+          schema:
+            $ref: '#/components/schemas/FRStatus'
+      responses:
+        '200':
+          description: List of functional requirements for the repository
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FunctionalRequirement'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ============================================
+  # Functional Requirements Endpoints
+  # ============================================
+  /functional-requirements:
+    get:
+      tags:
+        - Functional Requirements
+      summary: List all functional requirements
+      description: Retrieve a list of all functional requirements
+      parameters:
+        - name: repositoryId
+          in: query
+          description: Filter by repository ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            $ref: '#/components/schemas/FRStatus'
+        - name: createdBy
+          in: query
+          description: Filter by creator user ID
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of functional requirements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FunctionalRequirement'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Functional Requirements
+      summary: Create functional requirement
+      description: Create a new functional requirement (BA only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionalRequirementCreate'
+      responses:
+        '201':
+          description: Functional requirement created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionalRequirement'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /functional-requirements/{id}:
+    get:
+      tags:
+        - Functional Requirements
+      summary: Get functional requirement by ID
+      description: Retrieve detailed information about a specific FR
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+      responses:
+        '200':
+          description: Functional requirement details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionalRequirement'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - Functional Requirements
+      summary: Update functional requirement
+      description: Update an existing functional requirement (BA only)
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionalRequirementUpdate'
+      responses:
+        '200':
+          description: Functional requirement updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionalRequirement'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - Functional Requirements
+      summary: Delete functional requirement
+      description: Delete a functional requirement (BA only)
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+      responses:
+        '204':
+          description: Functional requirement deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ============================================
+  # Comments Endpoints
+  # ============================================
+  /functional-requirements/{id}/comments:
+    get:
+      tags:
+        - Comments
+      summary: Get FR comments
+      description: Retrieve all comments for a specific functional requirement
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+        - name: sort
+          in: query
+          description: Sort order for comments
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    post:
+      tags:
+        - Comments
+      summary: Add comment to FR
+      description: Add a new comment to a functional requirement discussion
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+                  example: "We need to consider the impact on the user authentication module."
+      responses:
+        '201':
+          description: Comment added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /functional-requirements/{id}/comments/{commentId}:
+    delete:
+      tags:
+        - Comments
+      summary: Delete comment
+      description: Delete a comment (comment author or Admin only)
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+        - name: commentId
+          in: path
+          required: true
+          description: Comment ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Comment deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ============================================
+  # Impact Analysis Endpoints
+  # ============================================
+  /functional-requirements/{id}/analyze:
+    post:
+      tags:
+        - Impact Analysis
+      summary: Trigger impact analysis
+      description: Start impact analysis for a functional requirement (BA only)
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                options:
+                  type: object
+                  properties:
+                    deepAnalysis:
+                      type: boolean
+                      description: Enable deep dependency scanning
+                      default: false
+                    includeTestFiles:
+                      type: boolean
+                      description: Include test files in analysis
+                      default: false
+      responses:
+        '202':
+          description: Analysis started successfully (async operation)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analysisId:
+                    type: string
+                    example: impact-1234567890
+                  status:
+                    type: string
+                    enum: [pending, processing, completed, failed]
+                    example: processing
+                  message:
+                    type: string
+                    example: "Impact analysis started. Check status at /impact-analyses/{analysisId}"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /functional-requirements/{id}/impact-analyses:
+    get:
+      tags:
+        - Impact Analysis
+      summary: List FR impact analyses
+      description: Get all impact analysis results for a specific functional requirement
+      parameters:
+        - $ref: '#/components/parameters/FRId'
+        - name: sort
+          in: query
+          description: Sort by analysis date
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of impact analyses for the FR
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ImpactAnalysis'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /impact-analyses/{id}:
+    get:
+      tags:
+        - Impact Analysis
+      summary: Get impact analysis by ID
+      description: Retrieve detailed impact analysis results
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Impact analysis ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Impact analysis details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactAnalysis'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /impact-analyses/{id}/report:
+    get:
+      tags:
+        - Impact Analysis
+      summary: Download impact analysis report
+      description: Download a PDF report of the impact analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Impact analysis ID
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Report format
+          schema:
+            type: string
+            enum: [pdf, json, csv]
+            default: pdf
+      responses:
+        '200':
+          description: Report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactAnalysis'
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /impact-analyses/{id}/rerun:
+    post:
+      tags:
+        - Impact Analysis
+      summary: Re-run impact analysis
+      description: Re-run an existing impact analysis with latest codebase (BA only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Impact analysis ID
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Analysis re-run started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analysisId:
+                    type: string
+                    example: impact-1234567891
+                  status:
+                    type: string
+                    example: processing
+                  message:
+                    type: string
+                    example: "Impact analysis re-run started"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+# ============================================
+# Reusable Components
+# ============================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: User ID
+      schema:
+        type: string
+        example: user-1
+
+    RepositoryId:
+      name: id
+      in: path
+      required: true
+      description: Repository ID
+      schema:
+        type: string
+        example: repo-1
+
+    FRId:
+      name: id
+      in: path
+      required: true
+      description: Functional Requirement ID
+      schema:
+        type: string
+        example: fr-1
+
+  schemas:
+    # ============================================
+    # User Schemas
+    # ============================================
+    UserRole:
+      type: string
+      enum: [admin, developer, ba]
+      description: User role determining access permissions
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: user-1
+        email:
+          type: string
+          format: email
+          example: dev@example.com
+        name:
+          type: string
+          example: John Doe
+        role:
+          $ref: '#/components/schemas/UserRole'
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+          example: https://example.com/avatars/user-1.jpg
+      required:
+        - id
+        - email
+        - name
+        - role
+
+    UserCreate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: newuser@example.com
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Jane Smith
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: securePassword123
+        role:
+          $ref: '#/components/schemas/UserRole'
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+      required:
+        - email
+        - name
+        - password
+        - role
+
+    UserUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        role:
+          $ref: '#/components/schemas/UserRole'
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Optional - only if changing password
+
+    # ============================================
+    # Repository Schemas
+    # ============================================
+    Repository:
+      type: object
+      properties:
+        id:
+          type: string
+          example: repo-1
+        name:
+          type: string
+          example: E-commerce Platform
+        description:
+          type: string
+          example: Main e-commerce application backend
+        gitUrl:
+          type: string
+          format: uri
+          example: https://github.com/company/ecommerce-backend
+        linkedDevelopers:
+          type: array
+          items:
+            type: string
+          example: [user-2, user-3]
+        linkedBAs:
+          type: array
+          items:
+            type: string
+          example: [user-4]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        lastAnalysis:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-03-20T14:45:00Z"
+        totalAPIs:
+          type: integer
+          nullable: true
+          example: 127
+        vulnerableModules:
+          type: integer
+          nullable: true
+          example: 3
+      required:
+        - id
+        - name
+        - description
+        - gitUrl
+        - linkedDevelopers
+        - linkedBAs
+        - createdAt
+
+    RepositoryCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: New Service API
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          example: Microservice for handling payment processing
+        gitUrl:
+          type: string
+          format: uri
+          example: https://github.com/company/payment-service
+        linkedDevelopers:
+          type: array
+          items:
+            type: string
+          example: [user-2, user-3]
+        linkedBAs:
+          type: array
+          items:
+            type: string
+          example: [user-4]
+      required:
+        - name
+        - description
+        - gitUrl
+        - linkedDevelopers
+        - linkedBAs
+
+    RepositoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        gitUrl:
+          type: string
+          format: uri
+        linkedDevelopers:
+          type: array
+          items:
+            type: string
+        linkedBAs:
+          type: array
+          items:
+            type: string
+
+    # ============================================
+    # Functional Requirement Schemas
+    # ============================================
+    FRStatus:
+      type: string
+      enum: [draft, under-review, analyzed, completed]
+      description: Current status of the functional requirement
+
+    FunctionalRequirement:
+      type: object
+      properties:
+        id:
+          type: string
+          example: fr-1
+        repositoryId:
+          type: string
+          example: repo-1
+        title:
+          type: string
+          example: Add Multi-Currency Support
+        description:
+          type: string
+          example: Implement support for USD, EUR, and GBP currencies in the payment module
+        fileUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://example.com/docs/fr-001-currency-support.pdf
+        createdBy:
+          type: string
+          example: user-4
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-03-15T09:00:00Z"
+        status:
+          $ref: '#/components/schemas/FRStatus'
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+      required:
+        - id
+        - repositoryId
+        - title
+        - description
+        - createdBy
+        - createdAt
+        - status
+        - comments
+
+    FunctionalRequirementCreate:
+      type: object
+      properties:
+        repositoryId:
+          type: string
+          example: repo-1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Implement User Notification System
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          example: Create a comprehensive notification system supporting email, SMS, and push notifications
+        fileUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://example.com/docs/fr-notification-system.pdf
+        status:
+          $ref: '#/components/schemas/FRStatus'
+      required:
+        - repositoryId
+        - title
+        - description
+
+    FunctionalRequirementUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        fileUrl:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          $ref: '#/components/schemas/FRStatus'
+
+    # ============================================
+    # Comment Schema
+    # ============================================
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          example: comment-1
+        userId:
+          type: string
+          example: user-2
+        userName:
+          type: string
+          example: John Developer
+        userRole:
+          $ref: '#/components/schemas/UserRole'
+        content:
+          type: string
+          example: "I've reviewed the requirements and this will impact the authentication module significantly."
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-03-16T10:30:00Z"
+      required:
+        - id
+        - userId
+        - userName
+        - userRole
+        - content
+        - createdAt
+
+    # ============================================
+    # Dependency Schema
+    # ============================================
+    DependencyNode:
+      type: object
+      properties:
+        id:
+          type: string
+          example: node-1
+        name:
+          type: string
+          example: PaymentService
+        type:
+          type: string
+          enum: [module, class, method]
+          example: module
+        description:
+          type: string
+          example: Main payment processing module
+        vulnerable:
+          type: boolean
+          default: false
+          example: false
+        dependencies:
+          type: array
+          items:
+            type: string
+          description: Array of dependency node IDs
+          example: [node-2, node-3]
+      required:
+        - id
+        - name
+        - type
+        - description
+
+    # ============================================
+    # Impact Analysis Schemas
+    # ============================================
+    CriticalityLevel:
+      type: string
+      enum: [low, medium, high, critical]
+      description: Severity level of the impact
+
+    CallStackItem:
+      type: object
+      properties:
+        method:
+          type: string
+          example: processPayment
+        description:
+          type: string
+          example: Processes payment transaction with validation
+        line:
+          type: integer
+          nullable: true
+          example: 145
+      required:
+        - method
+        - description
+
+    ImpactedAPI:
+      type: object
+      properties:
+        id:
+          type: string
+          example: api-1
+        name:
+          type: string
+          example: POST /api/payments/process
+        module:
+          type: string
+          example: PaymentService
+        callStack:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallStackItem'
+        criticality:
+          $ref: '#/components/schemas/CriticalityLevel'
+      required:
+        - id
+        - name
+        - module
+        - callStack
+        - criticality
+
+    ImpactAnalysis:
+      type: object
+      properties:
+        id:
+          type: string
+          example: impact-1
+        frId:
+          type: string
+          example: fr-1
+        repositoryId:
+          type: string
+          example: repo-1
+        analyzedAt:
+          type: string
+          format: date-time
+          example: "2024-03-20T14:45:00Z"
+        totalImpactedAPIs:
+          type: integer
+          example: 15
+        affectedModules:
+          type: integer
+          example: 4
+        criticalityLevel:
+          $ref: '#/components/schemas/CriticalityLevel'
+        impactedAPIs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImpactedAPI'
+      required:
+        - id
+        - frId
+        - repositoryId
+        - analyzedAt
+        - totalImpactedAPIs
+        - affectedModules
+        - criticalityLevel
+        - impactedAPIs
+
+    # ============================================
+    # Common Schemas
+    # ============================================
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+      required:
+        - page
+        - limit
+        - total
+        - totalPages
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input data
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    example: email
+                  message:
+                    type: string
+                    example: Invalid email format
+      required:
+        - error
+
+  # ============================================
+  # Common Responses
+  # ============================================
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication token is missing or invalid
+
+    ForbiddenError:
+      description: User does not have permission to perform this action
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions to access this resource
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: The requested resource was not found
+
+    BadRequestError:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Invalid request parameters
+              details:
+                - field: title
+                  message: Title is required
+                - field: repositoryId
+                  message: Repository ID must be valid
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Request validation failed
+              details:
+                - field: email
+                  message: Must be a valid email address
+                - field: password
+                  message: Must be at least 8 characters long
