@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useFRStore } from '@/store/frStore';
 import { useAuthStore } from '@/store/authStore';
@@ -31,6 +32,7 @@ import {
 import { toast } from 'sonner';
 
 const FunctionalRequirements = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { repositories, fetchRepositories } = useRepositoryStore();
   const {
@@ -47,7 +49,7 @@ const FunctionalRequirements = () => {
   const [selectedFR, setSelectedFR] = useState<FunctionalRequirement | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingFRId, setDeletingFRId] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingFRId, setAnalyzingFRId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRepositories();
@@ -89,11 +91,18 @@ const FunctionalRequirements = () => {
   };
 
   const handleAnalyzeImpact = async (fr: FunctionalRequirement) => {
-    setIsAnalyzing(true);
+    setAnalyzingFRId(fr.id);
     toast.info('Starting impact analysis...');
-    await analyzeImpact(fr.id);
-    setIsAnalyzing(false);
-    toast.success('Impact analysis completed!');
+    try {
+      await analyzeImpact(fr.id);
+      toast.success('Impact analysis completed!');
+      // Navigate to Impact Analysis page with FR ID
+      navigate(`/impact-analysis?frId=${fr.id}`);
+    } catch (error) {
+      toast.error('Failed to analyze impact');
+    } finally {
+      setAnalyzingFRId(null);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -233,10 +242,10 @@ const FunctionalRequirements = () => {
                       <Button
                         size="sm"
                         onClick={() => handleAnalyzeImpact(fr)}
-                        disabled={isAnalyzing}
+                        disabled={analyzingFRId === fr.id}
                       >
                         <BarChart3 className="h-4 w-4 mr-2" />
-                        {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
+                        {analyzingFRId === fr.id ? 'Analyzing...' : 'Analyze Impact'}
                       </Button>
                     )}
                   </div>

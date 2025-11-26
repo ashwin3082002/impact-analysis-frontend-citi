@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useFRStore } from '@/store/frStore';
 import { useRepositoryStore } from '@/store/repositoryStore';
@@ -15,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 
 const ImpactAnalysis = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
   const { functionalRequirements, impactAnalyses, fetchFRs } = useFRStore();
   const { repositories, fetchRepositories } = useRepositoryStore();
@@ -23,11 +25,28 @@ const ImpactAnalysis = () => {
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [expandedAPIs, setExpandedAPIs] = useState<Set<string>>(new Set());
   const [selectedReportFR, setSelectedReportFR] = useState<string | null>(null);
+  const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   useEffect(() => {
     fetchRepositories();
     fetchFRs();
   }, [fetchRepositories, fetchFRs]);
+
+  // Scroll to and highlight the FR card from URL params
+  useEffect(() => {
+    const frId = searchParams.get('frId');
+    if (frId && impactAnalyses[frId] && cardRefs.current[frId]) {
+      // Wait for render to complete
+      setTimeout(() => {
+        cardRefs.current[frId]?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+        // Clear the URL param after scrolling
+        setSearchParams({});
+      }, 300);
+    }
+  }, [impactAnalyses, searchParams, setSearchParams]);
 
   const toggleItem = (id: string, setFunc: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setFunc((prev) => {
@@ -179,7 +198,11 @@ Based on the impact analysis, the following actions are recommended:
             if (!analysis) return null;
 
             return (
-              <Card key={fr.id}>
+              <Card 
+                key={fr.id}
+                ref={(el) => (cardRefs.current[fr.id] = el)}
+                className={searchParams.get('frId') === fr.id ? 'ring-2 ring-primary' : ''}
+              >
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
