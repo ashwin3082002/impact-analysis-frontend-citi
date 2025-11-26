@@ -96,6 +96,12 @@ const ImpactAnalysis = () => {
     const analysis = impactAnalyses[frId];
     if (!analysis) return '';
     
+    // If the analysis has a pre-generated report, use it
+    if (analysis.report) {
+      return analysis.report;
+    }
+    
+    // Otherwise, generate a default report
     return `# Impact Analysis Report
 
 ## Functional Requirement

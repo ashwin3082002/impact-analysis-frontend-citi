@@ -61,6 +61,7 @@ export interface ImpactAnalysis {
   affectedModules: number;
   criticalityLevel: 'minor' | 'support' | 'major';
   affectedChannels: AffectedChannel[];
+  report?: string;
 }
 
 export interface AffectedChannel {
